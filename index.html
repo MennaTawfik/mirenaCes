@@ -751,7 +751,32 @@ body[data-review="1"] .ans-foot .d-row.compliance .d-body { display: block; }
 .cat[aria-selected="true"] {
   background: var(--bayer-navy); border-color: var(--bayer-navy); color: #fff;
 }
-.q-list { display: grid; gap: 6px; margin-bottom: 10px; }
+/* The starter panel is the empty-state discovery surface. Once an answer is
+   on screen the ANSWER is the subject, so the panel collapses to its header
+   and gives the height back to the log. Left expanded it reaches ~580px with
+   a long branch, which on a 768px laptop leaves the answer about 126px — the
+   categories end up covering the thing the clinician asked for. */
+.q-list {
+  display: grid; gap: 6px; margin-bottom: 10px;
+  /* Second guard, independent of the collapse: even expanded, the list can
+     never take more than a third of the viewport. */
+  max-height: 32vh; overflow-y: auto;
+}
+.starters[data-collapsed="1"] .cat-row,
+.starters[data-collapsed="1"] .q-list { display: none; }
+.starters[data-collapsed="1"] { padding-bottom: 8px; }
+
+.starters-toggle {
+  display: inline-flex; align-items: center; gap: 4px; cursor: pointer;
+  background: none; border: 0; padding: 2px 4px; border-radius: var(--r-sm);
+  font: 600 11.5px/1 var(--font); letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted-2);
+}
+.starters-toggle:hover { color: var(--bayer-navy); background: var(--panel-tint); }
+.starters-toggle .caret-i {
+  width: 13px; height: 13px; transition: transform .15s; transform: rotate(90deg);
+}
+.starters[data-collapsed="1"] .starters-toggle .caret-i { transform: rotate(0deg); }
 .q {
   display: flex; align-items: center; gap: 10px; width: 100%; text-align: left;
   background: var(--panel-tint); border: 1px solid var(--line);
@@ -1195,6 +1220,11 @@ body[data-drawer="open"] #scrim { display: block; }
       <section class="starters" id="starters" aria-labelledby="startersLabel">
         <div class="starters-head">
           <h2 class="eyebrow" id="startersLabel">Common clinical questions</h2>
+          <button class="starters-toggle" id="startersToggle" type="button"
+                  aria-expanded="true" aria-controls="catRow qList">
+            <svg class="icon caret-i" aria-hidden="true"><use href="#i-chev"/></svg>
+            <span id="startersToggleText">Hide</span>
+          </button>
           <button class="link-btn" id="exploreAll" type="button">Explore all 34 topics</button>
         </div>
         <div class="cat-row" id="catRow" role="tablist" aria-label="Question categories"></div>
@@ -2325,6 +2355,11 @@ function resetSession() {
   setCurrentTopic(null);
   renderHero();
   selectCategory('popular');
+  $('startersLabel').textContent = 'Common clinical questions';
+  // A new engagement is an empty state again, so the starters come back —
+  // including for someone who had collapsed them by hand in the last one.
+  startersPinned = false;
+  setStarters(true);
   announce('New engagement started.');
   input.focus();
 }
@@ -2603,6 +2638,25 @@ function surfaceRelated(topicId) {
   }
   if (!qList.childElementCount) selectCategory(activeCat);
 }
+
+/* Collapse state for the starter panel. Explicit, because it is both
+   auto-collapsed on the first answer and user-togglable, and the two must not
+   fight: once the clinician has set it by hand, we stop moving it for them. */
+const starters = $('starters');
+let startersPinned = false;          // true once the user has toggled it
+
+function setStarters(open, byUser) {
+  if (byUser) startersPinned = true;
+  starters.dataset.collapsed = open ? '0' : '1';
+  $('startersToggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+  $('startersToggleText').textContent = open ? 'Hide' : 'Show';
+}
+
+$('startersToggle').onclick = () => {
+  const open = starters.dataset.collapsed === '1';
+  setStarters(open, true);
+  if (open) qList.focus();
+};
 
 $('exploreAll').onclick = () => {
   if (narrow()) openDrawer();
@@ -2973,6 +3027,9 @@ function handleEvent(type, data, turn) {
       : `Response complete. ${slides.length} slide reference${slides.length === 1 ? '' : 's'} cited.`);
 
     surfaceRelated(currentTopic);
+    // The answer is now the subject of the screen, so the starter panel gives
+    // its height back to the log. Related questions stay one click away.
+    if (!startersPinned) setStarters(false);
     scrollLog();
 
   } else if (type === 'usage') {
